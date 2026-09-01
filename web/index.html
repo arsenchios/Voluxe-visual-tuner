@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Visual Tuner</title>
+    <link rel="stylesheet" href="/__vt__/app.css">
+  </head>
+  <body>
+    <main class="tuner-shell">
+      <section class="stage" aria-label="Website preview">
+        <header class="topbar">
+          <div class="brand"><span class="brand-mark">VT</span><span>Visual Tuner</span></div>
+          <div class="breakpoints" role="group" aria-label="Viewport">
+            <button class="mode-button active" data-breakpoint="desktop" data-width="1440" title="Desktop 1440px">Desktop</button>
+            <button class="mode-button" data-breakpoint="tablet" data-width="834" title="Tablet 834px">Tablet</button>
+            <button class="mode-button" data-breakpoint="mobile" data-width="390" title="Mobile 390px">Mobile</button>
+          </div>
+          <div class="top-actions">
+            <button id="compare-toggle" class="segmented" aria-pressed="true"><span>Edited</span><span>Original</span></button>
+            <button id="undo" class="icon-button" title="Undo (⌘Z)" disabled>↶</button>
+            <button id="redo" class="icon-button" title="Redo (⇧⌘Z)" disabled>↷</button>
+            <button id="save" class="save-button">Save</button>
+          </div>
+        </header>
+        <div class="canvas-wrap">
+          <div id="viewport-frame" class="viewport-frame desktop">
+            <iframe id="site-frame" title="Editable site preview" src="/" allow="clipboard-write"></iframe>
+          </div>
+        </div>
+        <footer class="stage-footer"><span id="viewport-label">1440 px · Desktop</span><span id="status">Click any element to inspect it</span></footer>
+      </section>
+
+      <aside class="inspector" aria-label="Element inspector">
+        <header class="inspector-header">
+          <div class="eyebrow">Selected element</div>
+          <div class="selection-line"><div id="selection-name" class="selection-name">Nothing selected</div><button id="select-parent" class="parent-button" disabled>Parent</button></div>
+          <code id="selector" class="selector">Click a site element</code>
+        </header>
+
+        <div id="empty-state" class="empty-state">
+          <div class="cursor-shape">⌖</div>
+          <p>Hover to highlight.<br>Click to tune. Shift-click selects a section.</p>
+        </div>
+
+        <div id="controls" class="controls hidden">
+          <section class="panel-section open">
+            <button class="section-title" type="button"><span>Typography</span><span>⌄</span></button>
+            <div class="section-content">
+              <div class="control-row"><label>Font size</label><div class="number-control" data-prop="font-size" data-unit="px" data-step="1"></div></div>
+              <div class="control-row"><label>Line height</label><div class="number-control" data-prop="line-height" data-unit="" data-step="0.05"></div></div>
+              <div class="control-row"><label>Letter spacing</label><div class="number-control" data-prop="letter-spacing" data-unit="px" data-step="0.1"></div></div>
+              <div class="control-row"><label>Weight</label><div class="number-control" data-prop="font-weight" data-unit="" data-step="100"></div></div>
+              <div class="control-row"><label>Align</label><select data-prop="text-align"><option>left</option><option>center</option><option>right</option><option>justify</option></select></div>
+            </div>
+          </section>
+
+          <section class="panel-section">
+            <button class="section-title" type="button"><span>Size & spacing</span><span>⌄</span></button>
+            <div class="section-content">
+              <div class="control-row"><label>Width</label><div class="number-control" data-prop="width" data-unit="px" data-step="4"></div></div>
+              <div class="control-row"><label>Height</label><div class="number-control" data-prop="height" data-unit="px" data-step="4"></div></div>
+              <div class="control-row"><label>Max width</label><div class="number-control" data-prop="max-width" data-unit="px" data-step="8"></div></div>
+              <div class="control-row"><label>Margin</label><div class="number-control" data-prop="margin" data-unit="px" data-step="4"></div></div>
+              <div class="control-row"><label>Padding</label><div class="number-control" data-prop="padding" data-unit="px" data-step="4"></div></div>
+              <div class="control-row"><label>Gap</label><div class="number-control" data-prop="gap" data-unit="px" data-step="4"></div></div>
+            </div>
+          </section>
+
+          <section class="panel-section">
+            <button class="section-title" type="button"><span>Appearance</span><span>⌄</span></button>
+            <div class="section-content">
+              <div class="control-row"><label>Color</label><div class="color-control"><input data-prop="color" type="color"><input data-prop="color" class="color-text" spellcheck="false"></div></div>
+              <div class="control-row"><label>Opacity</label><div class="number-control" data-prop="opacity" data-unit="" data-step="0.05" data-min="0" data-max="1" data-slider="true"></div></div>
+              <div class="control-row"><label>Radius</label><div class="number-control" data-prop="border-radius" data-unit="px" data-step="2"></div></div>
+              <div class="control-row"><label>Z-index</label><div class="number-control" data-prop="z-index" data-unit="" data-step="1"></div></div>
+            </div>
+          </section>
+
+          <section class="panel-section image-section">
+            <button class="section-title" type="button"><span>Image & position</span><span>⌄</span></button>
+            <div class="section-content">
+              <div class="control-row"><label>Object fit</label><select data-prop="object-fit"><option>fill</option><option>contain</option><option>cover</option><option>none</option><option>scale-down</option></select></div>
+              <div class="control-row"><label>Object position</label><input data-prop="object-position" type="text" placeholder="50% 50%"></div>
+              <div class="control-row"><label>Position</label><select data-prop="position"><option>static</option><option>relative</option><option>absolute</option><option>fixed</option><option>sticky</option></select></div>
+              <div class="control-row"><label>Top</label><div class="number-control" data-prop="top" data-unit="px" data-step="2"></div></div>
+              <div class="control-row"><label>Left</label><div class="number-control" data-prop="left" data-unit="px" data-step="2"></div></div>
+            </div>
+          </section>
+
+          <section class="panel-section">
+            <button class="section-title" type="button"><span>Layout</span><span>⌄</span></button>
+            <div class="section-content">
+              <div class="control-row"><label>Display</label><select data-prop="display"><option>block</option><option>inline</option><option>inline-block</option><option>flex</option><option>grid</option><option>none</option></select></div>
+              <div class="control-row"><label>Direction</label><select data-prop="flex-direction"><option>row</option><option>column</option><option>row-reverse</option><option>column-reverse</option></select></div>
+              <div class="control-row"><label>Justify</label><select data-prop="justify-content"><option>flex-start</option><option>center</option><option>flex-end</option><option>space-between</option><option>space-around</option></select></div>
+              <div class="control-row"><label>Align</label><select data-prop="align-items"><option>stretch</option><option>flex-start</option><option>center</option><option>flex-end</option><option>baseline</option></select></div>
+              <div class="control-row"><label>Grid columns</label><input data-prop="grid-template-columns" type="text" placeholder="repeat(2, 1fr)"></div>
+            </div>
+          </section>
+
+          <div class="reset-bar"><button id="reset-property" disabled>Reset property</button><button id="reset-element">Reset element</button></div>
+          <section class="changes-panel"><div class="changes-title">Saved changes <span id="change-count">0</span></div><pre id="css-preview">/* No overrides yet */</pre><div class="export-actions"><button id="copy-css">Copy CSS</button><a href="/__vt__/api/export" download>Export CSS</a></div></section>
+        </div>
+      </aside>
+    </main>
+    <script src="/__vt__/app.js"></script>
+  </body>
+</html>
