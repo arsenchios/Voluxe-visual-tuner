@@ -16,7 +16,7 @@
     if (!style) {
       style = document.createElement('style');
       style.id = STYLE_ID;
-      style.textContent = '[data-vt-hover]{outline:1px solid #b8ff56 !important;outline-offset:2px !important;cursor:crosshair !important;}[data-vt-selected]{outline:2px solid #6ea8ff !important;outline-offset:2px !important;}';
+      style.textContent = '[data-vt-hover]{outline:1px solid #b8ff56 !important;outline-offset:2px !important;cursor:crosshair !important;}[data-vt-selected]{outline:2px solid #6ea8ff !important;outline-offset:2px !important;}html,html *{-webkit-user-select:none !important;user-select:none !important;}input,textarea,[contenteditable]{-webkit-user-select:text !important;user-select:text !important;}';
       document.head.append(style);
     }
   }
@@ -232,6 +232,20 @@
     selected.setAttribute('data-vt-selected', '');
     guidesActive = false; clearGuides();
     send(snapshot(element));
+  }, true);
+
+  // Arrow keys nudge the selected element's on-screen position (1px, 10px with Shift).
+  // The parent applies this as position:relative + top/left so surrounding layout is untouched.
+  const NUDGE_KEYS = { ArrowUp: [0, -1], ArrowDown: [0, 1], ArrowLeft: [-1, 0], ArrowRight: [1, 0] };
+  document.addEventListener('keydown', event => {
+    if (!selected || isTunerNode(event.target)) return;
+    const editableTarget = ['input', 'textarea', 'select'].includes((event.target.tagName || '').toLowerCase()) || event.target.isContentEditable;
+    if (editableTarget) return;
+    const delta = NUDGE_KEYS[event.key];
+    if (!delta) return;
+    event.preventDefault();
+    const step = event.shiftKey ? 10 : 1;
+    send({ type:'nudge', dx: delta[0] * step, dy: delta[1] * step });
   }, true);
 
   window.addEventListener('message', event => {

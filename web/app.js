@@ -82,6 +82,22 @@ function recordContentOp(op) {
   }
   recordHistory();
 }
+const POSITIONED = ['relative', 'absolute', 'fixed', 'sticky'];
+function nudgeSelection(dx, dy) {
+  if (!selection) return;
+  // One arrow press = one Undo step, so batch position+top+left into a single history entry
+  // instead of going through setProperty() three times.
+  const position = displayValue('position') || 'static';
+  const top = numericValue(displayValue('top'));
+  const left = numericValue(displayValue('left'));
+  const next = { ...(rules()[selection.selector] || {}) };
+  if (!POSITIONED.includes(position)) next.position = 'relative';
+  next.top = `${(Number.isFinite(top.value) ? top.value : 0) + dy}${top.unit || 'px'}`;
+  next.left = `${(Number.isFinite(left.value) ? left.value : 0) + dx}${left.unit || 'px'}`;
+  rules()[selection.selector] = next;
+  recordHistory(); renderControls(); applyOverrides(); updateChrome();
+  flashGuides();
+}
 function duplicateElement() {
   if (!selection) return;
   const op = { op:'duplicate', selector: selection.selector, newId: 'vt-node-' + Math.random().toString(36).slice(2, 9) };
@@ -207,6 +223,7 @@ window.addEventListener('message', async event => {
   if (event.origin !== window.location.origin || !event.data?.visualTuner) return;
   if (event.data.type === 'selected') { selection = event.data; selectedProperty = null; renderControls(); updateChrome(); }
   if (event.data.type === 'hover' && !selection) el.status.textContent = event.data.label;
+  if (event.data.type === 'nudge') nudgeSelection(event.data.dx, event.data.dy);
   if (event.data.type === 'ready') {
     await stateReady; // the iframe can announce 'ready' before our own state fetch below resolves
     postToFrame({ type:'apply-content', ops: state.content }); applyOverrides(); if (selection) postToFrame({type:'select', selector:selection.selector});
