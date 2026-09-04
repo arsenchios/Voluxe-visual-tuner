@@ -16,7 +16,7 @@
     if (!style) {
       style = document.createElement('style');
       style.id = STYLE_ID;
-      style.textContent = '[data-vt-hover]{outline:1px solid #b8ff56 !important;outline-offset:2px !important;cursor:crosshair !important;}[data-vt-selected]{outline:2px solid #6ea8ff !important;outline-offset:2px !important;}html,html *{-webkit-user-select:none !important;user-select:none !important;}input,textarea,[contenteditable]{-webkit-user-select:text !important;user-select:text !important;}';
+      style.textContent = '[data-vt-hover]{outline:1px solid #b8ff56 !important;outline-offset:2px !important;cursor:crosshair !important;}[data-vt-selected]{outline:2px solid #6ea8ff !important;outline-offset:2px !important;}';
       document.head.append(style);
     }
   }
@@ -93,15 +93,45 @@
     return `<${element.tagName.toLowerCase()}>${text ? ' ' + text.slice(0, 54) : ''}`;
   }
 
-  // Editable = has no child elements other than <br> line breaks, so plain
-  // text (with manual line breaks) can be swapped without touching structure.
+  // Editable = every descendant is either a <br> line break or one of these
+  // inline emphasis tags (real headlines often highlight one phrase in a
+  // different colour/style via <em>). Emphasis round-trips through
+  // Telegram-style markers so a non-coder can keep it without touching HTML:
+  // _italic accent_ and *bold*.
+  const INLINE_MARK_TAGS = { EM: '_', I: '_', B: '*', STRONG: '*' };
+  const INLINE_MARK_CHARS = { _: 'em', '*': 'strong' };
   function isEditable(element) {
-    return [...element.children].every(child => child.tagName === 'BR');
+    return [...element.children].every(child => child.tagName === 'BR' || (INLINE_MARK_TAGS[child.tagName] && isEditable(child)));
   }
   function editableText(element) {
-    const copy = element.cloneNode(true);
-    copy.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
-    return copy.textContent;
+    let out = '';
+    element.childNodes.forEach(node => {
+      if (node.nodeType === Node.TEXT_NODE) out += node.textContent;
+      else if (node.tagName === 'BR') out += '\n';
+      else if (INLINE_MARK_TAGS[node.tagName]) { const mark = INLINE_MARK_TAGS[node.tagName]; out += mark + editableText(node) + mark; }
+    });
+    return out;
+  }
+  // Builds real DOM nodes from marker text (never innerHTML), so there is no
+  // HTML-injection surface even though the user is typing "tags" of a sort.
+  function parseEditableText(text) {
+    const frag = document.createDocumentFragment();
+    String(text).split('\n').forEach((line, i) => {
+      if (i > 0) frag.append(document.createElement('br'));
+      let lastIndex = 0;
+      const re = /(_[^_\n]+_|\*[^*\n]+\*)/g;
+      let match;
+      while ((match = re.exec(line))) {
+        if (match.index > lastIndex) frag.append(document.createTextNode(line.slice(lastIndex, match.index)));
+        const token = match[0];
+        const el = document.createElement(INLINE_MARK_CHARS[token[0]]);
+        el.textContent = token.slice(1, -1);
+        frag.append(el);
+        lastIndex = match.index + token.length;
+      }
+      if (lastIndex < line.length) frag.append(document.createTextNode(line.slice(lastIndex)));
+    });
+    return frag;
   }
 
   function snapshot(element) {
@@ -113,12 +143,6 @@
     return { type:'selected', selector: selectorFor(element), label: labelFor(element), tag: element.tagName.toLowerCase(), computed, rect: { width: Math.round(rect.width), height: Math.round(rect.height) }, editable, text: editable ? editableText(element) : '' };
   }
 
-  function escapeHtml(text) {
-    const box = document.createElement('div');
-    box.textContent = text;
-    return box.innerHTML;
-  }
-
   // Content operations (text edits, duplicate, delete) are DOM mutations, not
   // CSS, so they are re-applied from scratch every time the page (re)loads —
   // see 'apply-content' below. Applying the same op twice must stay harmless.
@@ -126,7 +150,7 @@
     if (!op || !op.selector) return;
     if (op.op === 'text') {
       const target = document.querySelector(op.selector);
-      if (target) target.innerHTML = escapeHtml(op.text || '').replace(/\n/g, '<br>');
+      if (target) target.replaceChildren(parseEditableText(op.text || ''));
     } else if (op.op === 'duplicate') {
       if (document.querySelector(`[data-vt-node="${cssEscape(op.newId)}"]`)) return;
       const source = document.querySelector(op.selector);
