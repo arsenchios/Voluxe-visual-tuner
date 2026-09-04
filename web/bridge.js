@@ -147,6 +147,66 @@
   function send(payload) { window.parent.postMessage({ visualTuner: true, ...payload }, window.location.origin); }
   function isTunerNode(element) { return !element || element.closest('[data-vt-ignore]'); }
 
+  // Alignment guides — while a size/position number is being typed, flash
+  // thin lines where the selected element's edges line up with the
+  // viewport, its parent, or its siblings. Visual only, never touches values.
+  const GUIDE_LAYER_ID = 'visual-tuner-guides';
+  const GUIDE_THRESHOLD = 4;
+  let guidesActive = false;
+
+  function guideLayer() {
+    let layer = document.getElementById(GUIDE_LAYER_ID);
+    if (!layer) {
+      layer = document.createElement('div');
+      layer.id = GUIDE_LAYER_ID;
+      layer.setAttribute('data-vt-ignore', '');
+      layer.style.cssText = 'position:fixed;inset:0;pointer-events:none;z-index:2147483647;';
+      document.body.append(layer);
+    }
+    return layer;
+  }
+  function clearGuides() { document.getElementById(GUIDE_LAYER_ID)?.replaceChildren(); }
+
+  function guideCandidates(element) {
+    const xs = new Set(), ys = new Set();
+    const collect = rect => {
+      if (!rect || (!rect.width && !rect.height)) return;
+      xs.add(Math.round(rect.left)); xs.add(Math.round(rect.right)); xs.add(Math.round((rect.left + rect.right) / 2));
+      ys.add(Math.round(rect.top)); ys.add(Math.round(rect.bottom)); ys.add(Math.round((rect.top + rect.bottom) / 2));
+    };
+    collect({ left: 0, right: window.innerWidth, top: 0, bottom: window.innerHeight, width: window.innerWidth, height: window.innerHeight });
+    if (element.parentElement) collect(element.parentElement.getBoundingClientRect());
+    [...(element.parentElement?.children || [])].forEach(sibling => { if (sibling !== element && sibling.nodeType === 1) collect(sibling.getBoundingClientRect()); });
+    return { xs, ys };
+  }
+
+  function drawGuides(element) {
+    const layer = guideLayer();
+    layer.replaceChildren();
+    const rect = element.getBoundingClientRect();
+    if (!rect.width && !rect.height) return;
+    const { xs, ys } = guideCandidates(element);
+    const mineX = [rect.left, rect.right, (rect.left + rect.right) / 2];
+    const mineY = [rect.top, rect.bottom, (rect.top + rect.bottom) / 2];
+    const drawnX = new Set(), drawnY = new Set();
+    mineX.forEach(pos => xs.forEach(candidate => {
+      if (!drawnX.has(candidate) && Math.abs(candidate - pos) <= GUIDE_THRESHOLD) {
+        drawnX.add(candidate);
+        const line = document.createElement('div');
+        line.style.cssText = `position:fixed;left:${candidate}px;top:0;width:0;height:100vh;border-left:1px solid #ff4fd8;`;
+        layer.append(line);
+      }
+    }));
+    mineY.forEach(pos => ys.forEach(candidate => {
+      if (!drawnY.has(candidate) && Math.abs(candidate - pos) <= GUIDE_THRESHOLD) {
+        drawnY.add(candidate);
+        const line = document.createElement('div');
+        line.style.cssText = `position:fixed;top:${candidate}px;left:0;height:0;width:100vw;border-top:1px solid #ff4fd8;`;
+        layer.append(line);
+      }
+    }));
+  }
+
   document.addEventListener('pointermove', event => {
     const element = document.elementFromPoint(event.clientX, event.clientY);
     if (!element || element === hovering || isTunerNode(element)) return;
@@ -170,13 +230,16 @@
     selected?.removeAttribute('data-vt-selected');
     selected = element;
     selected.setAttribute('data-vt-selected', '');
+    guidesActive = false; clearGuides();
     send(snapshot(element));
   }, true);
 
   window.addEventListener('message', event => {
     if (event.origin !== window.location.origin || !event.data?.visualTuner) return;
-    if (event.data.type === 'rescan' && selected) send(snapshot(selected));
+    if (event.data.type === 'rescan' && selected) { send(snapshot(selected)); if (guidesActive) drawGuides(selected); }
     if (event.data.type === 'set-overrides') setOverrides(event.data.css || '', event.data.enabled !== false);
+    if (event.data.type === 'show-guides') { guidesActive = true; if (selected) drawGuides(selected); }
+    if (event.data.type === 'hide-guides') { guidesActive = false; clearGuides(); }
     if (event.data.type === 'apply-content') applyContentOps(event.data.ops);
     if (event.data.type === 'content-op') {
       applyOneOp(event.data.op);

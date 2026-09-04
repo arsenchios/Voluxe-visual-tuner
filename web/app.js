@@ -1,4 +1,8 @@
 const BREAKPOINTS = { desktop: { width: 1440, label: 'Desktop' }, tablet: { width: 834, label: 'Tablet' }, mobile: { width: 390, label: 'Mobile' } };
+// Properties whose edits move an edge on screen — worth flashing alignment guides for.
+const GUIDE_PROPS = ['width', 'height', 'max-width', 'margin', 'padding', 'top', 'left'];
+let guideHideTimer = null;
+function flashGuides() { postToFrame({ type:'show-guides' }); clearTimeout(guideHideTimer); guideHideTimer = setTimeout(() => postToFrame({ type:'hide-guides' }), 900); }
 const CONTROL_PROPS = ['font-size','line-height','letter-spacing','font-weight','text-align','white-space','width','height','max-width','margin','padding','gap','color','opacity','border-radius','z-index','object-fit','object-position','position','top','left','display','flex-direction','justify-content','align-items','grid-template-columns'];
 
 const el = {
@@ -126,12 +130,14 @@ function buildNumberControls() {
   document.querySelectorAll('.number-control').forEach(box => {
     const { prop, unit = '', step = '1', min, max, slider } = box.dataset;
     box.innerHTML = `<button type="button" data-delta="-1" title="Decrease">−</button><input data-prop="${prop}" type="number" step="${step}" ${min ? `min="${min}"` : ''} ${max ? `max="${max}"` : ''}><span class="unit">${unit}</span><button type="button" data-delta="1" title="Increase">+</button>${slider ? `<input class="range" data-prop="${prop}" type="range" step="${step}" min="${min || 0}" max="${max || 100}">` : ''}`;
+    const guided = GUIDE_PROPS.includes(prop);
     const input = box.querySelector('input[type=number]');
     input.addEventListener('focus', () => { selectedProperty = prop; updateChrome(); input.select(); });
-    input.addEventListener('input', () => { if (input.value !== '') setProperty(prop, `${input.value}${unit}`, false); });
-    input.addEventListener('change', () => setProperty(prop, `${input.value}${unit}`));
+    input.addEventListener('input', () => { if (input.value !== '') setProperty(prop, `${input.value}${unit}`, false); if (guided) postToFrame({ type:'show-guides' }); });
+    input.addEventListener('change', () => { setProperty(prop, `${input.value}${unit}`); if (guided) postToFrame({ type:'hide-guides' }); });
+    input.addEventListener('blur', () => { if (guided) postToFrame({ type:'hide-guides' }); });
     input.addEventListener('keydown', event => { if (event.key === 'Escape') { input.blur(); } });
-    box.querySelectorAll('button').forEach(button => button.addEventListener('click', () => { const base = numericValue(displayValue(prop)); const next = Number((base.value + Number(button.dataset.delta) * Number(step)).toFixed(4)); setProperty(prop, `${next}${unit || base.unit}`); }));
+    box.querySelectorAll('button').forEach(button => button.addEventListener('click', () => { const base = numericValue(displayValue(prop)); const next = Number((base.value + Number(button.dataset.delta) * Number(step)).toFixed(4)); setProperty(prop, `${next}${unit || base.unit}`); if (guided) flashGuides(); }));
     const range = box.querySelector('.range'); if (range) range.addEventListener('input', () => setProperty(prop, `${range.value}${unit}`, false));
   });
 }
