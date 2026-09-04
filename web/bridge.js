@@ -2,7 +2,7 @@
   const STYLE_ID = 'visual-tuner-selection-style';
   const OVERRIDES_ID = 'visual-tuner-runtime-overrides';
   const PROPS = [
-    'font-size', 'line-height', 'letter-spacing', 'font-weight', 'text-align',
+    'font-size', 'line-height', 'letter-spacing', 'font-weight', 'text-align', 'white-space',
     'width', 'height', 'max-width', 'margin', 'padding', 'gap',
     'color', 'opacity', 'border-radius', 'z-index', 'object-fit', 'object-position',
     'position', 'top', 'left', 'display', 'flex-direction', 'justify-content',
@@ -43,6 +43,9 @@
   }
 
   function selectorFor(element) {
+    // Elements created by Duplicate carry a unique data-vt-node marker — always
+    // address them through it so style/content rules survive DOM reshuffles.
+    if (element.hasAttribute('data-vt-node')) return `[data-vt-node="${cssEscape(element.getAttribute('data-vt-node'))}"]`;
     // Use the outer app id and the closest local id where they exist. Besides
     // being stable, this safely wins against common component selectors such
     // as `#app .hero__title` without needing inline styles or !important.
@@ -90,13 +93,56 @@
     return `<${element.tagName.toLowerCase()}>${text ? ' ' + text.slice(0, 54) : ''}`;
   }
 
+  // Editable = has no child elements other than <br> line breaks, so plain
+  // text (with manual line breaks) can be swapped without touching structure.
+  function isEditable(element) {
+    return [...element.children].every(child => child.tagName === 'BR');
+  }
+  function editableText(element) {
+    const copy = element.cloneNode(true);
+    copy.querySelectorAll('br').forEach(br => br.replaceWith('\n'));
+    return copy.textContent;
+  }
+
   function snapshot(element) {
     const styles = getComputedStyle(element);
     const computed = {};
     PROPS.forEach(prop => computed[prop] = styles.getPropertyValue(prop));
     const rect = element.getBoundingClientRect();
-    return { type:'selected', selector: selectorFor(element), label: labelFor(element), tag: element.tagName.toLowerCase(), computed, rect: { width: Math.round(rect.width), height: Math.round(rect.height) } };
+    const editable = isEditable(element);
+    return { type:'selected', selector: selectorFor(element), label: labelFor(element), tag: element.tagName.toLowerCase(), computed, rect: { width: Math.round(rect.width), height: Math.round(rect.height) }, editable, text: editable ? editableText(element) : '' };
   }
+
+  function escapeHtml(text) {
+    const box = document.createElement('div');
+    box.textContent = text;
+    return box.innerHTML;
+  }
+
+  // Content operations (text edits, duplicate, delete) are DOM mutations, not
+  // CSS, so they are re-applied from scratch every time the page (re)loads —
+  // see 'apply-content' below. Applying the same op twice must stay harmless.
+  function applyOneOp(op) {
+    if (!op || !op.selector) return;
+    if (op.op === 'text') {
+      const target = document.querySelector(op.selector);
+      if (target) target.innerHTML = escapeHtml(op.text || '').replace(/\n/g, '<br>');
+    } else if (op.op === 'duplicate') {
+      if (document.querySelector(`[data-vt-node="${cssEscape(op.newId)}"]`)) return;
+      const source = document.querySelector(op.selector);
+      if (!source) return;
+      const dupe = source.cloneNode(true);
+      dupe.removeAttribute('id');
+      dupe.removeAttribute('data-vt-hover');
+      dupe.removeAttribute('data-vt-selected');
+      dupe.querySelectorAll('[data-vt-hover],[data-vt-selected]').forEach(node => { node.removeAttribute('data-vt-hover'); node.removeAttribute('data-vt-selected'); });
+      dupe.setAttribute('data-vt-node', op.newId);
+      source.after(dupe);
+    } else if (op.op === 'delete') {
+      document.querySelector(op.selector)?.remove();
+    }
+  }
+  function applyContentOps(ops) { (ops || []).forEach(applyOneOp); }
 
   function send(payload) { window.parent.postMessage({ visualTuner: true, ...payload }, window.location.origin); }
   function isTunerNode(element) { return !element || element.closest('[data-vt-ignore]'); }
@@ -131,6 +177,14 @@
     if (event.origin !== window.location.origin || !event.data?.visualTuner) return;
     if (event.data.type === 'rescan' && selected) send(snapshot(selected));
     if (event.data.type === 'set-overrides') setOverrides(event.data.css || '', event.data.enabled !== false);
+    if (event.data.type === 'apply-content') applyContentOps(event.data.ops);
+    if (event.data.type === 'content-op') {
+      applyOneOp(event.data.op);
+      if (event.data.op?.op === 'duplicate') {
+        const dupe = document.querySelector(`[data-vt-node="${cssEscape(event.data.op.newId)}"]`);
+        if (dupe) { selected?.removeAttribute('data-vt-selected'); selected = dupe; selected.setAttribute('data-vt-selected', ''); send(snapshot(selected)); }
+      }
+    }
     if (event.data.type === 'select-parent' && selected?.parentElement) {
       selected.removeAttribute('data-vt-selected');
       selected = selected.parentElement;

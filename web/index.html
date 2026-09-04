@@ -44,6 +44,20 @@
         </div>
 
         <div id="controls" class="controls hidden">
+          <section class="panel-section open text-section">
+            <button class="section-title" type="button"><span>Text</span><span>⌄</span></button>
+            <div class="section-content">
+              <div class="control-row text-row"><label>Content</label></div>
+              <textarea id="text-editor" rows="4" placeholder="Select a text element to edit it"></textarea>
+              <p id="text-editor-hint" class="hint hidden">This element contains other elements inside it — select the exact block that holds the words you want to change.</p>
+              <div class="text-actions">
+                <button id="duplicate-element" type="button">⧉ Duplicate</button>
+                <button id="delete-element" type="button" class="danger">✕ Delete</button>
+              </div>
+              <p class="hint">Duplicate + edit the copy is how you split one block of text into two.</p>
+            </div>
+          </section>
+
           <section class="panel-section open">
             <button class="section-title" type="button"><span>Typography</span><span>⌄</span></button>
             <div class="section-content">
@@ -52,6 +66,7 @@
               <div class="control-row"><label>Letter spacing</label><div class="number-control" data-prop="letter-spacing" data-unit="px" data-step="0.1"></div></div>
               <div class="control-row"><label>Weight</label><div class="number-control" data-prop="font-weight" data-unit="" data-step="100"></div></div>
               <div class="control-row"><label>Align</label><select data-prop="text-align"><option>left</option><option>center</option><option>right</option><option>justify</option></select></div>
+              <div class="control-row"><label>Wrap</label><select data-prop="white-space"><option value="normal">Normal — wraps to fit</option><option value="nowrap">No wrap — one line</option><option value="pre-line">Always wrap</option></select></div>
             </div>
           </section>
 

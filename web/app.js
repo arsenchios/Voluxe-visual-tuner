@@ -1,10 +1,13 @@
 const BREAKPOINTS = { desktop: { width: 1440, label: 'Desktop' }, tablet: { width: 834, label: 'Tablet' }, mobile: { width: 390, label: 'Mobile' } };
-const CONTROL_PROPS = ['font-size','line-height','letter-spacing','font-weight','text-align','width','height','max-width','margin','padding','gap','color','opacity','border-radius','z-index','object-fit','object-position','position','top','left','display','flex-direction','justify-content','align-items','grid-template-columns'];
+const CONTROL_PROPS = ['font-size','line-height','letter-spacing','font-weight','text-align','white-space','width','height','max-width','margin','padding','gap','color','opacity','border-radius','z-index','object-fit','object-position','position','top','left','display','flex-direction','justify-content','align-items','grid-template-columns'];
 
 const el = {
-  frame: document.querySelector('#site-frame'), viewport: document.querySelector('#viewport-frame'), name: document.querySelector('#selection-name'), selector: document.querySelector('#selector'), parent: document.querySelector('#select-parent'), empty: document.querySelector('#empty-state'), controls: document.querySelector('#controls'), status: document.querySelector('#status'), viewportLabel: document.querySelector('#viewport-label'), undo: document.querySelector('#undo'), redo: document.querySelector('#redo'), save: document.querySelector('#save'), compare: document.querySelector('#compare-toggle'), resetProp: document.querySelector('#reset-property'), resetElement: document.querySelector('#reset-element'), preview: document.querySelector('#css-preview'), count: document.querySelector('#change-count'), copy: document.querySelector('#copy-css')
+  frame: document.querySelector('#site-frame'), viewport: document.querySelector('#viewport-frame'), name: document.querySelector('#selection-name'), selector: document.querySelector('#selector'), parent: document.querySelector('#select-parent'), empty: document.querySelector('#empty-state'), controls: document.querySelector('#controls'), status: document.querySelector('#status'), viewportLabel: document.querySelector('#viewport-label'), undo: document.querySelector('#undo'), redo: document.querySelector('#redo'), save: document.querySelector('#save'), compare: document.querySelector('#compare-toggle'), resetProp: document.querySelector('#reset-property'), resetElement: document.querySelector('#reset-element'), preview: document.querySelector('#css-preview'), count: document.querySelector('#change-count'), copy: document.querySelector('#copy-css'),
+  textEditor: document.querySelector('#text-editor'), textEditorHint: document.querySelector('#text-editor-hint'), duplicateBtn: document.querySelector('#duplicate-element'), deleteBtn: document.querySelector('#delete-element')
 };
 let state = null;
+let resolveStateReady;
+const stateReady = new Promise(resolve => { resolveStateReady = resolve; });
 let activeBreakpoint = 'desktop';
 let selection = null;
 let selectedProperty = null;
@@ -46,11 +49,50 @@ function updateChrome() {
 function recordHistory() {
   if (applying) return;
   history = history.slice(0, historyIndex + 1);
-  history.push(clone(state.rules));
+  history.push({ rules: clone(state.rules), content: clone(state.content) });
   historyIndex = history.length - 1;
   updateChrome();
 }
-function restoreHistory(index) { if (index < 0 || index >= history.length) return; applying = true; state.rules = clone(history[index]); historyIndex = index; applying = false; renderControls(); applyOverrides(); updateChrome(); }
+function restoreHistory(index) {
+  if (index < 0 || index >= history.length) return;
+  const previousContent = JSON.stringify(state.content);
+  applying = true;
+  state.rules = clone(history[index].rules);
+  state.content = clone(history[index].content);
+  historyIndex = index;
+  applying = false;
+  renderControls();
+  // Duplicate/delete are DOM mutations, not CSS — the only reliable way to
+  // undo/redo them is to reload the frame and replay state.content fresh.
+  if (JSON.stringify(state.content) !== previousContent) el.frame.contentWindow.location.reload();
+  else applyOverrides();
+  updateChrome();
+}
+
+function recordContentOp(op) {
+  if (op.op === 'text') {
+    const idx = state.content.findIndex(existing => existing.op === 'text' && existing.selector === op.selector);
+    if (idx >= 0) state.content[idx] = op; else state.content.push(op);
+  } else {
+    state.content.push(op);
+  }
+  recordHistory();
+}
+function duplicateElement() {
+  if (!selection) return;
+  const op = { op:'duplicate', selector: selection.selector, newId: 'vt-node-' + Math.random().toString(36).slice(2, 9) };
+  postToFrame({ type:'content-op', op });
+  recordContentOp(op);
+}
+function deleteElement() {
+  if (!selection) return;
+  postToFrame({ type:'content-op', op:{ op:'delete', selector: selection.selector } });
+  recordContentOp({ op:'delete', selector: selection.selector });
+  selection = null; selectedProperty = null;
+  el.controls.classList.add('hidden'); el.empty.classList.remove('hidden');
+  el.name.textContent = 'Nothing selected'; el.selector.textContent = 'Click a site element'; el.parent.disabled = true;
+  updateChrome();
+}
 
 function numericValue(raw) {
   const match = String(raw || '').trim().match(/^(-?[\d.]+)([a-z%]*)$/i);
@@ -85,7 +127,7 @@ function buildNumberControls() {
     const { prop, unit = '', step = '1', min, max, slider } = box.dataset;
     box.innerHTML = `<button type="button" data-delta="-1" title="Decrease">−</button><input data-prop="${prop}" type="number" step="${step}" ${min ? `min="${min}"` : ''} ${max ? `max="${max}"` : ''}><span class="unit">${unit}</span><button type="button" data-delta="1" title="Increase">+</button>${slider ? `<input class="range" data-prop="${prop}" type="range" step="${step}" min="${min || 0}" max="${max || 100}">` : ''}`;
     const input = box.querySelector('input[type=number]');
-    input.addEventListener('focus', () => { selectedProperty = prop; updateChrome(); });
+    input.addEventListener('focus', () => { selectedProperty = prop; updateChrome(); input.select(); });
     input.addEventListener('input', () => { if (input.value !== '') setProperty(prop, `${input.value}${unit}`, false); });
     input.addEventListener('change', () => setProperty(prop, `${input.value}${unit}`));
     input.addEventListener('keydown', event => { if (event.key === 'Escape') { input.blur(); } });
@@ -100,6 +142,9 @@ function renderControls() {
   el.selector.textContent = selection.selector;
   el.parent.disabled = false;
   el.empty.classList.add('hidden'); el.controls.classList.remove('hidden');
+  el.textEditor.disabled = !selection.editable;
+  el.textEditor.value = selection.editable ? (selection.text || '') : '';
+  el.textEditorHint.classList.toggle('hidden', !!selection.editable);
   document.querySelectorAll('.number-control').forEach(box => {
     const prop = box.dataset.prop; const parsed = numericValue(displayValue(prop)); const input = box.querySelector('input[type=number]');
     input.value = Number.isFinite(parsed.value) ? parsed.value : '';
@@ -129,6 +174,10 @@ async function copyCss() {
 
 function wireStaticControls() {
   buildNumberControls();
+  el.textEditor.addEventListener('input', () => { if (selection?.editable) postToFrame({ type:'content-op', op:{ op:'text', selector: selection.selector, text: el.textEditor.value } }); });
+  el.textEditor.addEventListener('change', () => { if (selection?.editable) recordContentOp({ op:'text', selector: selection.selector, text: el.textEditor.value }); });
+  el.duplicateBtn.addEventListener('click', duplicateElement);
+  el.deleteBtn.addEventListener('click', deleteElement);
   document.querySelectorAll('.section-title').forEach(button => button.addEventListener('click', () => button.closest('.panel-section').classList.toggle('open')));
   document.querySelectorAll('select[data-prop], input[type=text][data-prop]').forEach(input => {
     input.addEventListener('focus', () => { selectedProperty = input.dataset.prop; updateChrome(); });
@@ -148,14 +197,19 @@ function wireStaticControls() {
   window.addEventListener('keydown', event => { if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'z') { event.preventDefault(); restoreHistory(event.shiftKey ? historyIndex + 1 : historyIndex - 1); } });
 }
 
-window.addEventListener('message', event => {
+window.addEventListener('message', async event => {
   if (event.origin !== window.location.origin || !event.data?.visualTuner) return;
   if (event.data.type === 'selected') { selection = event.data; selectedProperty = null; renderControls(); updateChrome(); }
   if (event.data.type === 'hover' && !selection) el.status.textContent = event.data.label;
-  if (event.data.type === 'ready') { applyOverrides(); if (selection) postToFrame({type:'select', selector:selection.selector}); }
+  if (event.data.type === 'ready') {
+    await stateReady; // the iframe can announce 'ready' before our own state fetch below resolves
+    postToFrame({ type:'apply-content', ops: state.content }); applyOverrides(); if (selection) postToFrame({type:'select', selector:selection.selector});
+  }
 });
 
 (async function init() {
   const response = await fetch('/__vt__/api/state'); const payload = await response.json(); state = payload.state;
-  history = [clone(state.rules)]; historyIndex = 0; wireStaticControls(); updateChrome();
+  state.content = state.content || [];
+  history = [{ rules: clone(state.rules), content: clone(state.content) }]; historyIndex = 0; wireStaticControls(); updateChrome();
+  resolveStateReady();
 })();

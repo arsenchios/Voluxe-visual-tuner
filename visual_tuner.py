@@ -41,6 +41,7 @@ def fresh_state(source: str) -> dict:
         "source": source,
         "enabled": True,
         "rules": {"desktop": {}, "tablet": {}, "mobile": {}},
+        "content": [],
     }
 
 
@@ -68,6 +69,8 @@ class TunerServer(ThreadingHTTPServer):
                     state.setdefault("enabled", True)
                     for breakpoint in ("desktop", "tablet", "mobile"):
                         state["rules"].setdefault(breakpoint, {})
+                    if not isinstance(state.get("content"), list):
+                        state["content"] = []
                     return state
             except (OSError, json.JSONDecodeError):
                 pass
@@ -78,6 +81,8 @@ class TunerServer(ThreadingHTTPServer):
         state["source"] = self.source_label
         for breakpoint in ("desktop", "tablet", "mobile"):
             state.setdefault("rules", {}).setdefault(breakpoint, {})
+        if not isinstance(state.get("content"), list):
+            state["content"] = []
         self.state = state
         self.state_file.write_text(json.dumps(state, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
         self.css_file.write_text(css_from_state(state), encoding="utf-8")
